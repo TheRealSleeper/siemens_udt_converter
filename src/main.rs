@@ -1,19 +1,19 @@
+use chrono::Local;
+use quick_xml;
+use regex::RegexBuilder;
 use std::env::args;
 use std::fs;
+use std::io::Cursor;
 use std::process::exit;
-use regex::RegexBuilder;
 use std::rc::Rc;
-use chrono::Local; 
-use quick_xml; 
-use std::io::Cursor; 
 
 struct UdtMember {
     _name: Rc<str>,
     _description: Option<Rc<str>>,
     _data_type: Rc<str>,
     _array_bounds: Option<(isize, isize)>,
-    _external_read: bool, 
-    _external_write: bool, 
+    _external_read: bool,
+    _external_write: bool,
 }
 
 struct Udt {
@@ -61,7 +61,6 @@ fn convert_type(input: &str) -> String {
         &_ => reformat_string(input),
     }
 }
-
 
 // TODO: Handle BOOLs properly (in Rockwell changes to BIT and is assigned to a bit from a hidden SINT), except arrays which will all be BOOL[#] where # is a multiple of 32
 fn main() {
@@ -186,71 +185,75 @@ fn main() {
                     _description: description.clone(),
                     _data_type: data_type.clone(),
                     _array_bounds: bounds.clone(),
-                    _external_write: true, 
+                    _external_write: true,
                     _external_read: true,
                 });
         }
     }
 
-    // // TEMPORARY -- prints UDTs to console to verify correct parsing
-    // for udt in udts {
-    //     print!("{} ", udt.name);
-    //     if let Some(desc) = udt.description {
-    //         print!("// {}", desc);
-    //     }
-    //     print!("\n");
 
-    //     for member in udt.members {
-    //         print!("    {} : ", member.name);
-    //         if let Some(bounds) = member.array_bounds {
-    //             print!("Array[{}..{}] of ", bounds.0, bounds.1);
-    //         }
-    //         print!("{}; ", member.data_type);
-    //         if let Some(description) = member.description {
-    //             print!("// {}", description);
-    //         }
-    //         print!("\n");
-    //     }
+    let name = udts.last().unwrap()._name.to_string();
+    // #[allow(unused_mut, unused_variables)]
+    let mut writer = quick_xml::Writer::new_with_indent(Cursor::new(Vec::<u8>::new()), b' ', 4); 
+    let description = quick_xml::events::BytesCData::new(if let Some(desc) = &udts.last().unwrap()._description{
+        desc.to_string()
+    } else {
+        "".to_string()
+    });
 
-    //     print!("\n");
-    // }
-
-
-    // let mut buf = Vec::<u8>::new();
-    let name = udts.last().unwrap()._name.to_string(); 
-    let mut buf = Vec::<u8>::new(); 
-
-    let root = quick_xml::Writer::new_with_indent(Cursor::new(buf), b' ', 4)
-        .create_element("RSLogix5000Content")
+    writer.create_element("RSLogix5000Content")
         .with_attributes([
             ("SchemaRevision", "1.0"), 
             ("SoftwareRevision", "35.0"), 
             ("TargetName", &name), 
             ("TargetType", "DataType"), 
             ("ContainsContext", "true"), 
-            ("ExportData", &chrono::Local::now().format("%a %b %d %H:%M:%S %Y").to_string()), 
+            ("ExportData", &Local::now().format("%a %b %d %H:%M:%S %Y").to_string()), 
             ("ExportOptions", "References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans"), 
-        ]); 
-        // .write_inner_content(|writer| {
-        //     Err(writer.create_element("Controller")
-        //         .with_attributes([
-        //             ("Use", "Context"), 
-        //             ("Name", "UdtConverter"), 
-        //         ])
-        //         .write_inner_content(|writer| {
-        //             Err(writer.create_element("DataTypes")
-        //                 .with_attribute(("Use", "Context"))
-        //                 .write_inner_content(|writer| {
-        //                     Err(writer.create_element("DataType")
-        //                         .with_attributes([
-        //                             ("Use", "Target"), 
-        //                             ("Name", &name), 
-        //                             ("Family", "NoFamily"), 
-        //                             ("Class", "User")
-        //                         ]))
-        //                 }))
-        //         }))
-        // }); 
+        ])
+        .write_inner_content::<_, quick_xml::Error>(|writer| {
+            writer.create_element("Controller")
+                .with_attributes([
+                    ("Use", "Context"), 
+                    ("Name", "UdtConverter"), 
+                ])
+                .write_inner_content::<_, quick_xml::Error>(|writer| {
+                    writer.create_element("DataTypes")
+                        .with_attribute(("Use", "Context"))
+                        .write_inner_content::<_, quick_xml::Error>(|writer| {
+                            writer.create_element("DataType")
+                                .with_attributes([
+                                    ("Use", "Target"), 
+                                    ("Name", &name), 
+                                    ("Family", "NoFamily"), 
+                                    ("Class", "User")
+                                ])
+                                .write_inner_content::<_, quick_xml::Error>(|writer| {
+                                    writer.create_element("Description")
+                                        .write_cdata_content(description)?; 
+                                Ok(())
+                                })?; 
+                        Ok(())
+                        })?;
+                Ok(())
+                })?;
+        Ok(())
+        })
+        .unwrap();
 
-        println!("{}", quick_xml::Writer::); 
+    let result = writer.into_inner().into_inner();
+    println!("{}", String::from_utf8(result).unwrap()); 
+
+    // writer.create_element("tag")
+    // // We need to provide error type, because it is not named somewhere explicitly
+    // .write_inner_content::<_, quick_xml::Error>(|writer| {
+    //     let fruits = ["apple", "orange"];
+    //     for (quant, item) in fruits.iter().enumerate() {
+    //         writer
+    //             .create_element("fruit")
+    //             .with_attribute(("quantity", quant.to_string().as_str()))
+    //             .write_text_content(quick_xml::events::BytesText::new(item))?;
+    //     }
+    //     Ok(())
+    // });
 }
