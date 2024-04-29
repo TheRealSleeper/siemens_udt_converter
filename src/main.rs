@@ -1,22 +1,24 @@
 use std::env::args;
 use std::fs;
 use std::process::exit;
-// use quick_xml::writer;
 use regex::RegexBuilder;
 use std::rc::Rc;
+use chrono::Local; 
+use quick_xml; 
+use std::io::Cursor; 
 
 struct UdtMember {
-    name: Rc<str>,
-    description: Option<Rc<str>>,
-    data_type: Rc<str>,
-    array_bounds: Option<(isize, isize)>,
+    _name: Rc<str>,
+    _description: Option<Rc<str>>,
+    _data_type: Rc<str>,
+    _array_bounds: Option<(isize, isize)>,
     _external_read: bool, 
     _external_write: bool, 
 }
 
 struct Udt {
-    name: Rc<str>,
-    description: Option<Rc<str>>,
+    _name: Rc<str>,
+    _description: Option<Rc<str>>,
     _version: Rc<str>,
     members: Vec<UdtMember>,
 }
@@ -137,8 +139,8 @@ fn main() {
 
         // Write
         udts.push(Udt {
-            name: name.clone(),
-            description: description.clone(),
+            _name: name.clone(),
+            _description: description.clone(),
             _version: version.clone(),
             members: vec![],
         });
@@ -180,36 +182,75 @@ fn main() {
                 .expect("No UDTs found!")
                 .members
                 .push(UdtMember {
-                    name: name.clone(),
-                    description: description.clone(),
-                    data_type: data_type.clone(),
-                    array_bounds: bounds.clone(),
+                    _name: name.clone(),
+                    _description: description.clone(),
+                    _data_type: data_type.clone(),
+                    _array_bounds: bounds.clone(),
                     _external_write: true, 
                     _external_read: true,
                 });
         }
     }
 
-    // TEMPORARY -- prints UDTs to console to verify correct parsing
-    for udt in udts {
-        print!("{} ", udt.name);
-        if let Some(desc) = udt.description {
-            print!("// {}", desc);
-        }
-        print!("\n");
+    // // TEMPORARY -- prints UDTs to console to verify correct parsing
+    // for udt in udts {
+    //     print!("{} ", udt.name);
+    //     if let Some(desc) = udt.description {
+    //         print!("// {}", desc);
+    //     }
+    //     print!("\n");
 
-        for member in udt.members {
-            print!("    {} : ", member.name);
-            if let Some(bounds) = member.array_bounds {
-                print!("Array[{}..{}] of ", bounds.0, bounds.1);
-            }
-            print!("{}; ", member.data_type);
-            if let Some(description) = member.description {
-                print!("// {}", description);
-            }
-            print!("\n");
-        }
+    //     for member in udt.members {
+    //         print!("    {} : ", member.name);
+    //         if let Some(bounds) = member.array_bounds {
+    //             print!("Array[{}..{}] of ", bounds.0, bounds.1);
+    //         }
+    //         print!("{}; ", member.data_type);
+    //         if let Some(description) = member.description {
+    //             print!("// {}", description);
+    //         }
+    //         print!("\n");
+    //     }
 
-        print!("\n");
-    }
+    //     print!("\n");
+    // }
+
+
+    // let mut buf = Vec::<u8>::new();
+    let name = udts.last().unwrap()._name.to_string(); 
+    let mut buf = Vec::<u8>::new(); 
+
+    let root = quick_xml::Writer::new_with_indent(Cursor::new(buf), b' ', 4)
+        .create_element("RSLogix5000Content")
+        .with_attributes([
+            ("SchemaRevision", "1.0"), 
+            ("SoftwareRevision", "35.0"), 
+            ("TargetName", &name), 
+            ("TargetType", "DataType"), 
+            ("ContainsContext", "true"), 
+            ("ExportData", &chrono::Local::now().format("%a %b %d %H:%M:%S %Y").to_string()), 
+            ("ExportOptions", "References NoRawData L5KData DecoratedData Context Dependencies ForceProtectedEncoding AllProjDocTrans"), 
+        ]); 
+        // .write_inner_content(|writer| {
+        //     Err(writer.create_element("Controller")
+        //         .with_attributes([
+        //             ("Use", "Context"), 
+        //             ("Name", "UdtConverter"), 
+        //         ])
+        //         .write_inner_content(|writer| {
+        //             Err(writer.create_element("DataTypes")
+        //                 .with_attribute(("Use", "Context"))
+        //                 .write_inner_content(|writer| {
+        //                     Err(writer.create_element("DataType")
+        //                         .with_attributes([
+        //                             ("Use", "Target"), 
+        //                             ("Name", &name), 
+        //                             ("Family", "NoFamily"), 
+        //                             ("Class", "User")
+        //                         ]))
+        //                 }))
+        //         }))
+        // }); 
+
+        println!("{}", quick_xml::Writer::); 
 }
