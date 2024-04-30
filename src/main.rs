@@ -5,21 +5,21 @@ use std::env::args;
 use std::fs;
 use std::io::Cursor;
 use std::process::exit;
-use std::rc::Rc;
+// use std::rc::Rc;
 
 struct UdtMember {
-    _name: Rc<str>,
-    _description: Option<Rc<str>>,
-    _data_type: Rc<str>,
+    name: String,
+    description: Option<String>,
+    data_type: String,
     _array_bounds: Option<(isize, isize)>,
     _external_read: bool,
     _external_write: bool,
 }
 
 struct Udt {
-    _name: Rc<str>,
-    _description: Option<Rc<str>>,
-    _version: Rc<str>,
+    name: String,
+    description: Option<String>,
+    _version: String,
     members: Vec<UdtMember>,
 }
 
@@ -127,19 +127,19 @@ fn main() {
     // Separate input into individual UDTs
     let udts_str = udt_regex.captures_iter(&input);
     for udt_str in udts_str {
-        let name: Rc<str> = udt_str["udt_type"].into();
-        let description: Option<Rc<str>> = if let Some(desc) = udt_str.name("udt_title") {
-            Some(Rc::from(desc.as_str()))
+        let name: String = udt_str["udt_type"].into();
+        let description: Option<String> = if let Some(desc) = udt_str.name("udt_title") {
+            Some(String::from(desc.as_str()))
         } else {
             None
         };
-        let version: Rc<str> = udt_str["udt_version"].into();
-        let body: Rc<str> = udt_str["udt_body"].into();
+        let version: String = udt_str["udt_version"].into();
+        let body: String = udt_str["udt_body"].into();
 
         // Write
         udts.push(Udt {
-            _name: name.clone(),
-            _description: description.clone(),
+            name: name.clone(),
+            description: description.clone(),
             _version: version.clone(),
             members: vec![],
         });
@@ -147,16 +147,16 @@ fn main() {
         //Parse members in UDT body
         let members_str = member_regex.captures_iter(&body);
         for member_str in members_str {
-            let name: Rc<str> = member_str["member_name"].into();
-            let data_type: Rc<str> = convert_type(&member_str["member_type"]).into();
+            let name: String = member_str["member_name"].into();
+            let data_type: String = convert_type(&member_str["member_type"]).into();
 
-            let lower_bound: Option<Rc<str>> = if let Some(bound) = member_str.name("bound_lower") {
-                Some(Rc::from(bound.as_str()))
+            let lower_bound: Option<String> = if let Some(bound) = member_str.name("bound_lower") {
+                Some(String::from(bound.as_str()))
             } else {
                 None
             };
-            let upper_bound: Option<Rc<str>> = if let Some(bound) = member_str.name("bound_upper") {
-                Some(Rc::from(bound.as_str()))
+            let upper_bound: Option<String> = if let Some(bound) = member_str.name("bound_upper") {
+                Some(String::from(bound.as_str()))
             } else {
                 None
             };
@@ -170,9 +170,9 @@ fn main() {
                     None
                 };
 
-            let description: Option<Rc<str>> =
+            let description: Option<String> =
                 if let Some(desc) = member_str.name("member_description") {
-                    Some(Rc::from(desc.as_str()))
+                    Some(String::from(desc.as_str()))
                 } else {
                     None
                 };
@@ -181,9 +181,9 @@ fn main() {
                 .expect("No UDTs found!")
                 .members
                 .push(UdtMember {
-                    _name: name.clone(),
-                    _description: description.clone(),
-                    _data_type: data_type.clone(),
+                    name: name.clone(),
+                    description: description.clone(),
+                    data_type: data_type.clone(),
                     _array_bounds: bounds.clone(),
                     _external_write: true,
                     _external_read: true,
@@ -191,21 +191,16 @@ fn main() {
         }
     }
 
-
-    let name = udts.last().unwrap()._name.to_string();
     // #[allow(unused_mut, unused_variables)]
-    let mut writer = quick_xml::Writer::new_with_indent(Cursor::new(Vec::<u8>::new()), b' ', 4); 
-    let description = quick_xml::events::BytesCData::new(if let Some(desc) = &udts.last().unwrap()._description{
-        desc.to_string()
-    } else {
-        "".to_string()
-    });
+    let mut writer = quick_xml::Writer::new_with_indent(Cursor::new(Vec::<u8>::new()), b' ', 4);
 
+    // Generate root
+    let parent_udt = udts.pop().unwrap();
     writer.create_element("RSLogix5000Content")
         .with_attributes([
             ("SchemaRevision", "1.0"), 
             ("SoftwareRevision", "35.0"), 
-            ("TargetName", &name), 
+            ("TargetName", &parent_udt.name), 
             ("TargetType", "DataType"), 
             ("ContainsContext", "true"), 
             ("ExportData", &Local::now().format("%a %b %d %H:%M:%S %Y").to_string()), 
@@ -224,25 +219,50 @@ fn main() {
                             writer.create_element("DataType")
                                 .with_attributes([
                                     ("Use", "Target"), 
-                                    ("Name", &name), 
+                                    ("Name", &parent_udt.name), 
                                     ("Family", "NoFamily"), 
                                     ("Class", "User")
                                 ])
                                 .write_inner_content::<_, quick_xml::Error>(|writer| {
-                                    writer.create_element("Description")
-                                        .write_cdata_content(description)?; 
-                                Ok(())
-                                })?; 
-                        Ok(())
+                                    if let Some(desc) = parent_udt.description {
+                                        writer.create_element("Description")
+                                            .write_cdata_content(quick_xml::events::BytesCData::new(desc))?;
+                                    }
+                                    writer.create_element("members")
+                                        .write_inner_content::<_, quick_xml::Error>(|writer| {
+                                            for member in parent_udt.members {
+                                                writer.create_element("Member")
+                                                .with_attributes([
+                                                    ("Name", member.name.as_str()),
+                                                    ("DataType", member.data_type.as_str()), 
+                                                    ("Radix", "NullType"),
+                                                    ("Hidden", "false"),
+                                                    ("ExternalAccess", "Read/Write"),
+                                                ])
+                                                .write_inner_content::<_, quick_xml::Error>(|writer| {
+                                                    if let Some(desc) = member.description {
+                                                        writer.create_element("Description")
+                                                            .write_cdata_content(quick_xml::events::BytesCData::new(desc))?;
+                                                    }
+                                                    Ok(())
+                                                })?;
+                                            }
+                                            Ok(())
+                                        })?;
+                                    Ok(())
+                                })?;
+                            Ok(())
                         })?;
-                Ok(())
+                    Ok(())
                 })?;
-        Ok(())
+            Ok(())
         })
         .unwrap();
 
-    let result = writer.into_inner().into_inner();
-    println!("{}", String::from_utf8(result).unwrap()); 
+    // let result = writer.into_inner().into_inner();
+    fs::write("Data Types/dummy.xml", writer.into_inner().into_inner()).unwrap();
+
+    // println!("{}", String::from_utf8(result).unwrap());
 
     // writer.create_element("tag")
     // // We need to provide error type, because it is not named somewhere explicitly
