@@ -1,71 +1,15 @@
 use std::env::args;
-use std::fs;
 use std::process::exit;
-// use quick_xml::writer;
-use regex::RegexBuilder;
-use std::rc::Rc;
+use std::{fs, vec};
 
-struct UdtMember {
-    name: Rc<str>,
-    description: Option<Rc<str>>,
-    data_type: Rc<str>,
-    array_bounds: Option<(isize, isize)>,
-    _external_read: bool, 
-    _external_write: bool, 
-}
+mod l5x;
+mod udt;
 
-struct Udt {
-    name: Rc<str>,
-    description: Option<Rc<str>>,
-    _version: Rc<str>,
-    members: Vec<UdtMember>,
-}
-
-// Converts the syntax for custom length strings to a valid syntax for Rockwell
-// However, custom length strings must be separately defined data types
-// TODO: add functionality to automate that
-fn reformat_string(input: &str) -> String {
-    if let Some(_) = input.to_uppercase().find("STRING[") {
-        let end = input.find("]").expect("Invalid STRING type format");
-        let mut output = "STRING_".to_string();
-        output.push_str(&input[7..end]);
-        output.to_owned()
-    } else {
-        input.to_string()
-    }
-}
-
-// TODO: find a way to do this without multiple String allocations (fixed length strings maybe?)
-fn convert_type(input: &str) -> String {
-    match input.to_uppercase().as_str() {
-        "BYTE" => "USINT".to_string(),
-        "WORD" => "UINT".to_string(),
-        "DWORD" => "UDINT".to_string(),
-        "LWORD" => "ULINT".to_string(),
-        "TIME" => "DINT".to_string(),
-        "SINT" => "SINT".to_string(),
-        "INT" => "INT".to_string(),
-        "DINT" => "DINT".to_string(),
-        "LINT" => "LINT".to_string(),
-        "USINT" => "USINT".to_string(),
-        "UINT" => "UINT".to_string(),
-        "UDINT" => "UDINT".to_string(),
-        "ULINT" => "ULINT".to_string(),
-        "REAL" => "REAL".to_string(),
-        "LREAL" => "LREAL".to_string(),
-        "STRING" => "STRING".to_string(),
-        "CHAR" => "CHAR".to_string(),
-        "DTL" => "LDT".to_string(),
-        &_ => reformat_string(input),
-    }
-}
-
-
-// TODO: Handle BOOLs properly (in Rockwell changes to BIT and is assigned to a bit from a hidden SINT), except arrays which will all be BOOL[#] where # is a multiple of 32
+// TODO: Add better modularization
 fn main() {
     let mut env_args = args().skip(1); // Skip the first argument, which will always be the program name
     let mut input_path: Option<String> = None;
-    let mut _output_path: Option<String> = None;
+    let mut output_path: Option<String> = None;
 
     let help = "This is a tool for converting UDT files exported from TIA Portal\n\
                         to an L5X XML format to import into Studio 5000\n\
@@ -87,9 +31,11 @@ fn main() {
                 input_path = Some(env_args.next().expect("No argument given for input path!"))
             }
             "-o" | "--output" => {
-                _output_path = Some(env_args.next().expect("No argument given for output path!"))
+                output_path = Some(env_args.next().expect("No argument given for output path!"))
             }
-            "-h" | "--help" => println!("{}", help),
+            "-h" | "--help" => {
+                println!("{}", help)
+            }
             _ => {
                 println!("Unknown command");
                 exit(-1);
@@ -97,21 +43,18 @@ fn main() {
         }
     }
 
-    // These regex patterns were made at https://regex101.com/ using the Rust flavor
-    // Regex pattern for parsing the UDTs
-    let udt_regex = RegexBuilder::new(r#"TYPE *"(?<udt_type>\S*)"\s*(?:TITLE *= *(?<udt_title>[\S\s]*?)\n)?(?:VERSION *: *(?<udt_version>[\s\S]*?)\n)[\s\S]*?STRUCT(?<udt_body>[\s\S]*?)END_STRUCT;?[\s\S]*?END_TYPE"#)
-        .case_insensitive(true)
-        .multi_line(true)
-        .build()
-        .expect("Invalid Regex pattern!");
+    if input_path == None {
+        println!("No input path given!");
+        exit(-1);
+    }
 
-    // Regex pattern for parsing member variables of a UDT, declared before looping to avoid rebuilding Regex with each pass
-    // TODO: Kill it with fire! "nom" seems to be a suggested alternative to Regex
-    let member_regex = RegexBuilder::new(r#"\s*"?(?<member_name>[a-z1-9_]*)"?\s*?(?:\{(?:\s*?ExternalAccessible\s*?:=\s*?'(?<ext_acs>[a-z]*?)';)?(?:\s*?ExternalVisible\s*?:=\s*?'(?<ext_vis>[a-z]*?)';)?(?:\s*?ExternalWritable\s*?:=\s*?'(?<ext_wrt>[a-z]*?)')?[\s\S]*?})?\s*?:\s*?(?:Array\[(?<bound_lower>[[:digit:]]+)\.\.(?<bound_upper>[[:digit:]])+\]\s*?of\s+?)?"?(?<member_type>[a-z1-9_]*)"?(?:\s*?:=\s*?[\s\S]*?)?;\s*?(?://(?<member_description>[\s\S]*?))?\n"#)
-        .case_insensitive(true)
-        .multi_line(true)
-        .build()
-        .expect("Invalid regex pattern!");
+    if output_path == None {
+        println!("No output path given!");
+        exit(-1);
+    }
+
+    let udt_regex = udt::build_udt_regex();
+    let member_regex = udt::build_member_regex();
 
     // Try to open specified input file
     let input = if let Some(path) = input_path {
@@ -121,22 +64,22 @@ fn main() {
     };
 
     // Generate empty Vec to be filled with parsed UDTs
-    let mut udts: Vec<Udt> = vec![];
+    let mut udts: Vec<udt::Udt> = vec![];
 
     // Separate input into individual UDTs
     let udts_str = udt_regex.captures_iter(&input);
     for udt_str in udts_str {
-        let name: Rc<str> = udt_str["udt_type"].into();
-        let description: Option<Rc<str>> = if let Some(desc) = udt_str.name("udt_title") {
-            Some(Rc::from(desc.as_str()))
+        let name: String = udt_str["udt_type"].into();
+        let description: Option<String> = if let Some(desc) = udt_str.name("udt_title") {
+            Some(String::from(desc.as_str()))
         } else {
             None
         };
-        let version: Rc<str> = udt_str["udt_version"].into();
-        let body: Rc<str> = udt_str["udt_body"].into();
+        let version: String = udt_str["udt_version"].into();
+        let body: String = udt_str["udt_body"].into();
 
         // Write
-        udts.push(Udt {
+        udts.push(udt::Udt {
             name: name.clone(),
             description: description.clone(),
             _version: version.clone(),
@@ -144,18 +87,20 @@ fn main() {
         });
 
         //Parse members in UDT body
+        let mut target_num = 0;
+        let mut bit_num = 0;
         let members_str = member_regex.captures_iter(&body);
         for member_str in members_str {
-            let name: Rc<str> = member_str["member_name"].into();
-            let data_type: Rc<str> = convert_type(&member_str["member_type"]).into();
+            let name: String = member_str["member_name"].into();
+            let data_type: String = udt::convert_type(&member_str["member_type"]).into();
 
-            let lower_bound: Option<Rc<str>> = if let Some(bound) = member_str.name("bound_lower") {
-                Some(Rc::from(bound.as_str()))
+            let lower_bound: Option<String> = if let Some(bound) = member_str.name("bound_lower") {
+                Some(String::from(bound.as_str()))
             } else {
                 None
             };
-            let upper_bound: Option<Rc<str>> = if let Some(bound) = member_str.name("bound_upper") {
-                Some(Rc::from(bound.as_str()))
+            let upper_bound: Option<String> = if let Some(bound) = member_str.name("bound_upper") {
+                Some(String::from(bound.as_str()))
             } else {
                 None
             };
@@ -169,47 +114,104 @@ fn main() {
                     None
                 };
 
-            let description: Option<Rc<str>> =
+            let description: Option<String> =
                 if let Some(desc) = member_str.name("member_description") {
-                    Some(Rc::from(desc.as_str()))
+                    Some(String::from(desc.as_str()))
                 } else {
                     None
                 };
 
+            let external_write = if let Some(ext_wrt) = member_str.name("ext_wrt") {
+                if ext_wrt.as_str().to_lowercase() == "false" {
+                    false
+                } else {
+                    true
+                }
+            } else {
+                true
+            };
+
+            let external_read = if let Some(ext_vis) = member_str.name("ext_vis") {
+                if ext_vis.as_str().to_lowercase() == "false" {
+                    false
+                } else {
+                    true
+                }
+            } else {
+                true
+            };
+
+            let mut target_name = "ZZZZZZZZZZ".to_string();
+            target_name.push_str(&udts.last().unwrap().name);
+
+            if let (true, None) = (data_type.to_uppercase() == "BOOL", bounds) {
+                if bit_num == 8 {
+                    bit_num = 0;
+                    target_num += 1;
+                }
+
+                target_name.push_str(&target_num.to_string());
+
+                if bit_num == 0 {
+                    udts.last_mut().unwrap().members.insert(
+                        target_num,
+                        udt::UdtMember {
+                            name: target_name.clone(),
+                            description: None,
+                            data_type: "SINT".to_string(),
+                            array_bounds: None,
+                            external_read: false,
+                            external_write: false,
+                            hidden: true,
+                            target: None,
+                            bit_num: None,
+                        },
+                    )
+                }
+            }
+
+            let target = if data_type.to_uppercase() == "BOOL" {
+                Some(target_name)
+            } else {
+                None
+            };
+
             udts.last_mut()
                 .expect("No UDTs found!")
                 .members
-                .push(UdtMember {
+                .push(udt::UdtMember {
                     name: name.clone(),
                     description: description.clone(),
                     data_type: data_type.clone(),
                     array_bounds: bounds.clone(),
-                    _external_write: true, 
-                    _external_read: true,
+                    external_write: external_write,
+                    external_read: external_read,
+                    hidden: false,
+                    target: target.clone(),
+                    bit_num: if data_type.to_uppercase() == "BOOL" && bounds == None {
+                        Some(bit_num)
+                    } else {
+                        None
+                    },
                 });
+
+            if let &Some(_) = &target {
+                bit_num += 1;
+            }
         }
     }
 
-    // TEMPORARY -- prints UDTs to console to verify correct parsing
-    for udt in udts {
-        print!("{} ", udt.name);
-        if let Some(desc) = udt.description {
-            print!("// {}", desc);
-        }
-        print!("\n");
+    let parent_udt = udts.pop().unwrap();
 
-        for member in udt.members {
-            print!("    {} : ", member.name);
-            if let Some(bounds) = member.array_bounds {
-                print!("Array[{}..{}] of ", bounds.0, bounds.1);
-            }
-            print!("{}; ", member.data_type);
-            if let Some(description) = member.description {
-                print!("// {}", description);
-            }
-            print!("\n");
-        }
+    // Not elegant, but it properly adds the xml declaration to the beginning of the file
+    let mut xml: Vec<u8> = "<?xml version=\"1.0\" ?>\n".into();
+    xml.append(
+        &mut l5x::create_l5x(&udts, parent_udt)
+            .unwrap()
+            .into_inner()
+            .into_inner(),
+    );
 
-        print!("\n");
-    }
+    // let result = writer.into_inner().into_inner();
+    fs::write(output_path.unwrap(), xml).unwrap();
 }
