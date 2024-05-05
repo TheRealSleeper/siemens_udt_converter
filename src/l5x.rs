@@ -3,6 +3,9 @@ use chrono::Local;
 use quick_xml;
 use std::{io::Cursor, vec};
 
+// TODO: Organize this better. Unfortunately, no method for doing that is obvious, since this is
+// almost entirely made of closures, and some need to capture the envirnoment from the function
+/// Generates L5X file (stored in memory as Vec<u8>) for parsed UDTs
 pub fn create_l5x(
     udts: &Vec<udt::Udt>,
     parent_udt: udt::Udt,
@@ -80,7 +83,6 @@ pub fn create_l5x(
                 ("ExternalAccess", external_access),
             ];
 
-            // (&Some(_), &Some(_)) = (&member.target, &member.bit_num)
             if let (None, true) = (
                 member.array_bounds,
                 member.data_type.to_uppercase() == "BOOL",
