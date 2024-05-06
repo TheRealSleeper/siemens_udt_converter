@@ -55,7 +55,7 @@ pub fn create_l5x(
             let external_access = if member.external_write {
                 "Read/Write"
             } else if member.external_read {
-                "ReadOnly"
+                "Read Only"
             } else {
                 "None"
             };
@@ -77,7 +77,7 @@ pub fn create_l5x(
             let mut attributes = vec![
                 ("Name", member.name.as_str()),
                 ("DataType", data_type),
-                ("Dimensions", bounds.as_str()),
+                ("Dimension", bounds.as_str()),
                 ("Radix", radix),
                 ("Hidden", hidden.as_str()),
                 ("ExternalAccess", external_access),
