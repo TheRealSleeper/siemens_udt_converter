@@ -1,12 +1,12 @@
 use std::env::args;
+use std::fs;
 use std::process::exit;
-use std::{fs, vec};
 
 mod l5x;
 mod udt;
 
 fn main() {
-    let mut env_args = args().skip(1); 
+    let mut env_args = args().skip(1);
     let mut input_path: Option<String> = None;
     let mut output_path: Option<String> = None;
 
@@ -56,53 +56,7 @@ fn main() {
         panic!("No input file specified!");
     };
 
-    // Generate regex patterns before loop to avoid repeatedly compiling them
-    let udt_regex = udt::build_udt_regex();
-    let member_regex = udt::build_member_regex();
-
-    let mut udts: Vec<udt::Udt> = vec![];
-
-    for udt_str in udt_regex.captures_iter(&input) {
-        udts.push(udt::Udt {
-            name: udt_str["udt_type"].into(),
-            description: udt::get_udt_description(&udt_str),
-            _version: udt_str["udt_version"].into(),
-            members: vec![],
-        });
-
-        //Parse members in UDT body
-        let mut target_nums = udt::BoolTargets::new();
-        let body: String = udt_str["udt_body"].into();
-
-        for member_str in member_regex.captures_iter(&body) {
-            let data_type: String = udt::convert_type(&member_str["member_type"]).into();
-            let bounds = udt::get_bounds(&member_str);
-            let target = udt::get_target(&member_str, &mut udts, &target_nums);
-
-            udts.last_mut()
-                .expect("No UDTs found!")
-                .members
-                .push(udt::UdtMember {
-                    name: member_str["member_name"].into(),
-                    description: udt::get_member_description(&member_str),
-                    data_type: data_type.clone(),
-                    array_bounds: bounds.clone(),
-                    external_write: udt::external_write(&member_str),
-                    external_read: udt::external_read(&member_str),
-                    hidden: false,
-                    target: target.clone(),
-                    bit_num: if data_type.to_uppercase() == "BOOL" && bounds == None {
-                        Some(target_nums.bit_num)
-                    } else {
-                        None
-                    },
-                });
-
-            if let &Some(_) = &target {
-                target_nums.inc();
-            }
-        }
-    }
+    let mut udts = udt::get_udts(input);
 
     let parent_udt = udts.pop().unwrap();
 

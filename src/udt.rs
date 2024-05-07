@@ -102,9 +102,14 @@ pub fn convert_type(input: &str) -> String {
 // These regex patterns were made at https://regex101.com/ using the Rust flavor
 /// Regex pattern for parsing the head and body from exported UDTs from TIA Portal
 pub fn build_udt_regex() -> Regex {
-    RegexBuilder::new(r#"TYPE *"(?<udt_type>\S*)"\s*(?:TITLE *= *(?<udt_title>[\S\s]*?)\n)?(?:VERSION *: *(?<udt_version>[\s\S]*?)\n)[\s\S]*?STRUCT(?<udt_body>[\s\S]*?)END_STRUCT;?[\s\S]*?END_TYPE"#)
+    RegexBuilder::new(
+            r#"TYPE\s+"(?<udt_type>\S*)"\s*(?:TITLE\s*=\s*(?<udt_title>[\S\s]*?)\n)?
+            (?:VERSION\s*:\s*(?<udt_version>[\s\S]*?)\n)[\s\S]*?STRUCT
+            (?<udt_body>[\s\S]*?)END_STRUCT;?[\s\S]*?END_TYPE"#
+        )
         .case_insensitive(true)
         .multi_line(true)
+        .ignore_whitespace(true)
         .build()
         .expect("Invalid Regex pattern!")
 }
@@ -112,9 +117,17 @@ pub fn build_udt_regex() -> Regex {
 // TODO: Kill it with fire!
 /// Regex pattern for parsing member variables from the body of an exported UDT from TIA Portal
 pub fn build_member_regex() -> Regex {
-    RegexBuilder::new(r#"\s*"?(?<member_name>[a-z0-9_]*)"?\s*?(?:\{(?:\s*?ExternalAccessible\s*?:=\s*?'(?<ext_acs>[a-z]*?)';)?(?:\s*?ExternalVisible\s*?:=\s*?'(?<ext_vis>[a-z]*?)';)?(?:\s*?ExternalWritable\s*?:=\s*?'(?<ext_wrt>[a-z]*?)')?[\s\S]*?})?\s*?:\s*?(?:Array\[(?<bound_lower>[[:digit:]]+)\.\.(?<bound_upper>[[:digit:]])+\]\s*?of\s+?)?"?(?<member_type>[a-z1-9_]*)"?(?:\s*?:=\s*?[\s\S]*?)?;\s*?(?://(?<member_description>[\s\S]*?))?\n"#)
+    RegexBuilder::new(
+                r#"\s*"?(?<member_name>[a-z0-9_]*)"?\s*?(?:\{(?:\s*?ExternalAccessible\s*?:=\s*?'
+                (?<ext_acs>[a-z]*?)';)?(?:\s*?ExternalVisible\s*?:=\s*?'(?<ext_vis>[a-z]*?)';)?
+                (?:\s*?ExternalWritable\s*?:=\s*?'(?<ext_wrt>[a-z]*?)')?[\s\S]*?})?\s*?:\s*?(?:Array\[
+                (?<bound_lower>[[:digit:]]+)\.\.(?<bound_upper>[[:digit:]])+\]\s*?of\s+?)?"?
+                (?<member_type>[a-z1-9_]*)"?(?:\s*?:=\s*?[\s\S]*?)?;\s*?(?://\s*
+                (?<member_description>[\s\S]*?))?\n"#
+        )
         .case_insensitive(true)
         .multi_line(true)
+        .ignore_whitespace(true)
         .build()
         .expect("Invalid regex pattern!")
 }
@@ -229,4 +242,59 @@ pub fn get_target(
     } else {
         None
     }
+}
+
+fn get_members(member_str: Captures, udts: &mut Vec<Udt>, target_nums: &mut BoolTargets) {
+    let data_type: String = convert_type(&member_str["member_type"]).into();
+    let bounds = get_bounds(&member_str);
+    let target = get_target(&member_str, udts, &target_nums);
+
+    udts.last_mut()
+        .expect("No UDTs found!")
+        .members
+        .push(UdtMember {
+            name: member_str["member_name"].into(),
+            description: get_member_description(&member_str),
+            data_type: data_type.clone(),
+            array_bounds: bounds.clone(),
+            external_write: external_write(&member_str),
+            external_read: external_read(&member_str),
+            hidden: false,
+            target: target.clone(),
+            bit_num: if data_type.to_uppercase() == "BOOL" && bounds == None {
+                Some(target_nums.bit_num)
+            } else {
+                None
+            },
+        });
+
+    if let &Some(_) = &target {
+        target_nums.inc();
+    }
+}
+
+pub fn get_udts(content: String) -> Vec<Udt> {
+    // Generate regex patterns before looping to avoid repeatedly compiling them
+    let udt_regex = build_udt_regex();
+    let member_regex = build_member_regex();
+    let mut udts: Vec<Udt> = vec![];
+
+    for udt_str in udt_regex.captures_iter(&content) {
+        udts.push(Udt {
+            name: udt_str["udt_type"].into(),
+            description: get_udt_description(&udt_str),
+            _version: udt_str["udt_version"].into(),
+            members: vec![],
+        });
+
+        //Parse members in UDT body
+        let mut target_nums = BoolTargets::new();
+        let body: String = udt_str["udt_body"].into();
+
+        for member_str in member_regex.captures_iter(&body) {
+            get_members(member_str, &mut udts, &mut target_nums);
+        }
+    }
+
+    udts
 }
