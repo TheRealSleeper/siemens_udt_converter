@@ -230,3 +230,58 @@ pub fn get_target(
         None
     }
 }
+
+fn get_members(member_str: Captures, udts: &mut Vec<Udt>, target_nums: &mut BoolTargets) {
+    let data_type: String = convert_type(&member_str["member_type"]).into();
+    let bounds = get_bounds(&member_str);
+    let target = get_target(&member_str, udts, &target_nums);
+
+    udts.last_mut()
+        .expect("No UDTs found!")
+        .members
+        .push(UdtMember {
+            name: member_str["member_name"].into(),
+            description: get_member_description(&member_str),
+            data_type: data_type.clone(),
+            array_bounds: bounds.clone(),
+            external_write: external_write(&member_str),
+            external_read: external_read(&member_str),
+            hidden: false,
+            target: target.clone(),
+            bit_num: if data_type.to_uppercase() == "BOOL" && bounds == None {
+                Some(target_nums.bit_num)
+            } else {
+                None
+            },
+        });
+
+    if let &Some(_) = &target {
+        target_nums.inc();
+    }
+}
+
+pub fn get_udts(content: String) -> Vec<Udt> {
+    // Generate regex patterns before looping to avoid repeatedly compiling them
+    let udt_regex = build_udt_regex();
+    let member_regex = build_member_regex();
+    let mut udts: Vec<Udt> = vec![];
+
+    for udt_str in udt_regex.captures_iter(&content) {
+        udts.push(Udt {
+            name: udt_str["udt_type"].into(),
+            description: get_udt_description(&udt_str),
+            _version: udt_str["udt_version"].into(),
+            members: vec![],
+        });
+
+        //Parse members in UDT body
+        let mut target_nums = BoolTargets::new();
+        let body: String = udt_str["udt_body"].into();
+
+        for member_str in member_regex.captures_iter(&body) {
+            get_members(member_str, &mut udts, &mut target_nums);
+        }
+    }
+
+    udts
+}
