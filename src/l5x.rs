@@ -5,7 +5,7 @@ use std::{io::Cursor, vec};
 
 /// Create description element
 fn write_description(
-    description: &Option<String>,
+    description: Option<&str>,
     writer: &mut quick_xml::Writer<Cursor<Vec<u8>>>,
 ) -> Result<(), quick_xml::Error> {
     if let Some(desc) = description {
@@ -86,7 +86,7 @@ fn write_members(
         writer
             .create_element("Member")
             .with_attributes(attributes)
-            .write_inner_content(|writer| write_description(&member.description, writer))?;
+            .write_inner_content(|writer| write_description(member.description.as_deref(), writer))?;
     }
     Ok(())
 }
@@ -105,7 +105,7 @@ fn write_data_type(
             ("Class", "User"),
         ])
         .write_inner_content(|writer| {
-            write_description(&udt.description, writer)?;
+            write_description(udt.description.as_deref(), writer)?;
 
             writer
                 .create_element("Members")
@@ -144,7 +144,7 @@ fn write_parent_data_type(
             ("Class", "User"),
         ])
         .write_inner_content(|writer| {
-            write_description(&parent_udt.description, writer)?;
+            write_description(parent_udt.description.as_deref(), writer)?;
 
             writer
                 .create_element("Members")

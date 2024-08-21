@@ -103,15 +103,15 @@ pub fn convert_type(input: &str) -> String {
 /// Regex pattern for parsing the head and body from exported UDTs from TIA Portal
 pub fn build_udt_regex() -> Regex {
     RegexBuilder::new(
-            r#"TYPE\s+"(?<udt_type>\S*)"\s*(?:TITLE\s*=\s*(?<udt_title>[\S\s]*?)\n)?
+        r#"TYPE\s+"(?<udt_type>\S*)"\s*(?:TITLE\s*=\s*(?<udt_title>[\S\s]*?)\n)?
             (?:VERSION\s*:\s*(?<udt_version>[\s\S]*?)\n)[\s\S]*?STRUCT
-            (?<udt_body>[\s\S]*?)END_STRUCT;?[\s\S]*?END_TYPE"#
-        )
-        .case_insensitive(true)
-        .multi_line(true)
-        .ignore_whitespace(true)
-        .build()
-        .expect("Invalid Regex pattern!")
+            (?<udt_body>[\s\S]*?)END_STRUCT;?[\s\S]*?END_TYPE"#,
+    )
+    .case_insensitive(true)
+    .multi_line(true)
+    .ignore_whitespace(true)
+    .build()
+    .expect("Invalid Regex pattern!")
 }
 
 // TODO: Kill it with fire!
