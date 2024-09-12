@@ -134,7 +134,7 @@ pub fn build_member_regex() -> Regex {
 
 pub fn get_udt_description(udt_str: &Captures) -> Option<String> {
     if let Some(desc) = udt_str.name("udt_title") {
-        Some(String::from(desc.as_str()))
+        Some(desc.as_str().into())
     } else {
         None
     }
@@ -144,20 +144,12 @@ pub fn get_udt_description(udt_str: &Captures) -> Option<String> {
 pub fn get_bounds(member_str: &Captures) -> Option<(isize, isize)> {
     let (lower_bound, upper_bound) = (
         if let Some(bound) = member_str.name("bound_lower") {
-            Some(
-                String::from(bound.as_str())
-                    .parse()
-                    .expect("Lower bound invalid format"),
-            )
+            Some(bound.as_str().parse().expect("Lower bound invalid format"))
         } else {
             None
         },
         if let Some(bound) = member_str.name("bound_upper") {
-            Some(
-                String::from(bound.as_str())
-                    .parse()
-                    .expect("Upper bound invalid format"),
-            )
+            Some(bound.as_str().parse().expect("Upper bound invalid format"))
         } else {
             None
         },
@@ -173,7 +165,7 @@ pub fn get_bounds(member_str: &Captures) -> Option<(isize, isize)> {
 /// Get description (if it exists) from the regex parser
 pub fn get_member_description(member_str: &Captures) -> Option<String> {
     if let Some(desc) = member_str.name("member_description") {
-        Some(String::from(desc.as_str()))
+        Some(desc.as_str().into())
     } else {
         None
     }

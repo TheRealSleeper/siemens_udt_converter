@@ -86,7 +86,9 @@ fn write_members(
         writer
             .create_element("Member")
             .with_attributes(attributes)
-            .write_inner_content(|writer| write_description(member.description.as_deref(), writer))?;
+            .write_inner_content(|writer| {
+                write_description(member.description.as_deref(), writer)
+            })?;
     }
     Ok(())
 }
