@@ -1,6 +1,5 @@
 use crate::udt;
 use chrono::Local;
-use quick_xml;
 use std::{io::Cursor, vec};
 
 /// Create description element
@@ -169,7 +168,7 @@ fn write_all_data_types(
     write_parent_data_type(udts, parent_udt, writer)?;
 
     for udt in udts {
-        write_data_type(&udt, writer)?;
+        write_data_type(udt, writer)?;
     }
     Ok(())
 }

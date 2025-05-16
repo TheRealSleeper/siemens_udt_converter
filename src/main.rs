@@ -40,12 +40,12 @@ fn main() {
         }
     }
 
-    if input_path == None {
+    if input_path.is_none() {
         println!("No input path given!");
         exit(0);
     }
 
-    if output_path == None {
+    if output_path.is_none() {
         println!("No output path given!");
         exit(0);
     }

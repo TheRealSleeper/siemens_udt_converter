@@ -49,7 +49,7 @@ impl BoolTargets {
 /// Converts the syntax for custom length strings to a valid syntax for Rockwell.
 /// However, custom length strings must be separately defined data types
 pub fn reformat_string(input: &str) -> String {
-    if let Some(_) = input.to_uppercase().find("STRING[") {
+    if input.to_uppercase().contains("STRING[") {
         let end = input.find("]").expect("Invalid STRING type format");
         let mut output = "STRING_".to_string();
         output.push_str(&input[7..end]);
@@ -133,26 +133,14 @@ pub fn build_member_regex() -> Regex {
 }
 
 pub fn get_udt_description(udt_str: &Captures) -> Option<String> {
-    if let Some(desc) = udt_str.name("udt_title") {
-        Some(desc.as_str().into())
-    } else {
-        None
-    }
+    udt_str.name("udt_title").map(|desc| desc.as_str().into())
 }
 
 /// Get array bounds (if they exist) from the regex parser
 pub fn get_bounds(member_str: &Captures) -> Option<(isize, isize)> {
     let (lower_bound, upper_bound) = (
-        if let Some(bound) = member_str.name("bound_lower") {
-            Some(bound.as_str().parse().expect("Lower bound invalid format"))
-        } else {
-            None
-        },
-        if let Some(bound) = member_str.name("bound_upper") {
-            Some(bound.as_str().parse().expect("Upper bound invalid format"))
-        } else {
-            None
-        },
+        member_str.name("bound_lower").map(|bound| bound.as_str().parse().expect("Lower bound invalid format")),
+        member_str.name("bound_upper").map(|bound| bound.as_str().parse().expect("Upper bound invalid format")),
     );
 
     if let (Some(lower), Some(upper)) = (lower_bound, upper_bound) {
@@ -164,21 +152,13 @@ pub fn get_bounds(member_str: &Captures) -> Option<(isize, isize)> {
 
 /// Get description (if it exists) from the regex parser
 pub fn get_member_description(member_str: &Captures) -> Option<String> {
-    if let Some(desc) = member_str.name("member_description") {
-        Some(desc.as_str().into())
-    } else {
-        None
-    }
+    member_str.name("member_description").map(|desc| desc.as_str().into())
 }
 
 /// Determine if member is externally writeable
 pub fn external_write(member_str: &Captures) -> bool {
     if let Some(ext_wrt) = member_str.name("ext_wrt") {
-        if ext_wrt.as_str().to_lowercase() == "false" {
-            false
-        } else {
-            true
-        }
+        ext_wrt.as_str().to_lowercase() != "false"
     } else {
         true
     }
@@ -187,11 +167,7 @@ pub fn external_write(member_str: &Captures) -> bool {
 /// Determine if member is externally readable
 pub fn external_read(member_str: &Captures) -> bool {
     if let Some(ext_vis) = member_str.name("ext_vis") {
-        if ext_vis.as_str().to_lowercase() == "false" {
-            false
-        } else {
-            true
-        }
+        ext_vis.as_str().to_lowercase() != "false"
     } else {
         true
     }
@@ -201,7 +177,7 @@ pub fn external_read(member_str: &Captures) -> bool {
 /// Also creates the hidden SINTs as needed and adds them to the UDT
 pub fn get_target(
     member_str: &Captures,
-    udts: &mut Vec<Udt>,
+    udts: &mut [Udt],
     target_nums: &BoolTargets,
 ) -> Option<String> {
     let data_type = convert_type(&member_str["member_type"]).to_uppercase();
@@ -236,10 +212,10 @@ pub fn get_target(
     }
 }
 
-fn get_members(member_str: Captures, udts: &mut Vec<Udt>, target_nums: &mut BoolTargets) {
-    let data_type: String = convert_type(&member_str["member_type"]).into();
+fn get_members(member_str: Captures, udts: &mut [Udt], target_nums: &mut BoolTargets) {
+    let data_type: String = convert_type(&member_str["member_type"]);
     let bounds = get_bounds(&member_str);
-    let target = get_target(&member_str, udts, &target_nums);
+    let target = get_target(&member_str, udts, target_nums);
 
     udts.last_mut()
         .expect("No UDTs found!")
@@ -248,19 +224,19 @@ fn get_members(member_str: Captures, udts: &mut Vec<Udt>, target_nums: &mut Bool
             name: member_str["member_name"].into(),
             description: get_member_description(&member_str),
             data_type: data_type.clone(),
-            array_bounds: bounds.clone(),
+            array_bounds: bounds,
             external_write: external_write(&member_str),
             external_read: external_read(&member_str),
             hidden: false,
             target: target.clone(),
-            bit_num: if data_type.to_uppercase() == "BOOL" && bounds == None {
+            bit_num: if data_type.to_uppercase() == "BOOL" && bounds.is_none() {
                 Some(target_nums.bit_num)
             } else {
                 None
             },
         });
 
-    if let &Some(_) = &target {
+    if target.is_some() {
         target_nums.inc();
     }
 }
